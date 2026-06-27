@@ -1,0 +1,115 @@
+---
+export const prerender = false;
+
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import ProjectCard from '@/components/ProjectCard.astro';
+import { client } from '@/db';
+import { ProjectsTable, DeploysTable, UsersTable } from '@/db/schema';
+import { eq, desc } from 'drizzle-orm';
+
+const user = Astro.locals.user;
+
+if (!user || !user.is_admin) {
+  return Astro.redirect('/');
+}
+
+const projects = await client
+  .select({
+    id: ProjectsTable.id,
+    name: ProjectsTable.name,
+    slug: ProjectsTable.slug,
+    description: ProjectsTable.description,
+    ownerUsername: UsersTable.username,
+    createdAt: ProjectsTable.createdAt,
+  })
+  .from(ProjectsTable)
+  .innerJoin(UsersTable, eq(ProjectsTable.ownerId, UsersTable.id))
+  .orderBy(desc(ProjectsTable.updatedAt))
+  .all();
+
+const projectIds = projects.map(p => p.id);
+const deployCounts = projectIds.length > 0
+  ? await client
+      .select({
+        projectId: DeploysTable.projectId,
+        count: DeploysTable.id,
+      })
+      .from(DeploysTable)
+      .where(projectIds.length > 0 ? undefined : undefined)
+      .all()
+  : [];
+
+const liveDeploys = projectIds.length > 0
+  ? await client
+      .select({
+        projectId: DeploysTable.projectId,
+        version: DeploysTable.version,
+      })
+      .from(DeploysTable)
+      .where(eq(DeploysTable.isLive, true))
+      .all()
+  : [];
+
+const deployCountMap = new Map<number, number>();
+for (const d of deployCounts) {
+  deployCountMap.set(d.projectId, (deployCountMap.get(d.projectId) || 0) + 1);
+}
+
+const liveMap = new Map<number, number>();
+for (const d of liveDeploys) {
+  liveMap.set(d.projectId, d.version);
+}
+---
+
+<AdminLayout title="Dashboard">
+  <div class="mb-8 flex items-center justify-between">
+    <div>
+      <h1 class="font-display text-3xl font-bold tracking-tight">Dashboard</h1>
+      <p class="mt-1 text-text-secondary">Tus proyectos en Labs</p>
+    </div>
+    <a
+      href="/dashboard/projects/new"
+      class="inline-flex items-center gap-2 rounded-[14px] bg-accent px-5 py-2.5 text-sm font-semibold text-white no-underline transition-all hover:bg-accent-hover hover:shadow-[0_8px_30px_rgba(99,102,241,0.3)]"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      Nuevo Proyecto
+    </a>
+  </div>
+
+  {projects.length === 0 ? (
+    <div class="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-border-default py-20">
+      <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-[16px] bg-surface-card">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-muted">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+        </svg>
+      </div>
+      <h3 class="mb-1 font-display text-lg font-semibold text-text-primary">Sin proyectos</h3>
+      <p class="mb-6 text-sm text-text-muted">Crea tu primer proyecto para empezar a publicar.</p>
+      <a
+        href="/dashboard/projects/new"
+        class="inline-flex items-center gap-2 rounded-[12px] bg-accent px-4 py-2 text-sm font-medium text-white no-underline transition-colors hover:bg-accent-hover"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Crear proyecto
+      </a>
+    </div>
+  ) : (
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {projects.map((project) => (
+        <ProjectCard
+          name={project.name}
+          slug={project.slug}
+          description={project.description}
+          ownerUsername={project.ownerUsername}
+          deployCount={deployCountMap.get(project.id) || 0}
+          liveVersion={liveMap.get(project.id) ?? null}
+          href={`/dashboard/projects/${project.id}`}
+        />
+      ))}
+    </div>
+  )}
+</AdminLayout>

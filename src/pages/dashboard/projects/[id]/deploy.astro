@@ -1,0 +1,293 @@
+---
+export const prerender = false;
+
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { client } from '@/db';
+import { ProjectsTable, DeploysTable, DeployPagesTable, UsersTable } from '@/db/schema';
+import { eq, max } from 'drizzle-orm';
+
+const user = Astro.locals.user;
+
+if (!user || !user.is_admin) {
+  return Astro.redirect('/');
+}
+
+const projectId = Number(Astro.params.id);
+
+const dbUser = await client
+  .select()
+  .from(UsersTable)
+  .where(eq(UsersTable.susId, Number(user.id)))
+  .get();
+
+if (!dbUser) {
+  return Astro.redirect('/');
+}
+
+const project = await client
+  .select()
+  .from(ProjectsTable)
+  .where(eq(ProjectsTable.id, projectId))
+  .get();
+
+if (!project || project.ownerId !== dbUser.id) {
+  return Astro.redirect('/dashboard');
+}
+
+let error = '';
+let success = false;
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const pagesJson = formData.get('pages') as string;
+  const setAsMain = formData.get('setAsMain') === 'on';
+
+  if (!pagesJson) {
+    error = 'No se enviaron archivos.';
+  } else {
+    try {
+      const pages: Array<{ route: string; content: string }> = JSON.parse(pagesJson);
+
+      if (pages.length === 0) {
+        error = 'Subi al menos un archivo HTML.';
+      } else {
+        const maxVersion = await client
+          .select({ value: max(DeploysTable.version) })
+          .from(DeploysTable)
+          .where(eq(DeploysTable.projectId, projectId))
+          .get();
+
+        const newVersion = (maxVersion?.value ?? 0) + 1;
+
+        const deploy = await client
+          .insert(DeploysTable)
+          .values({
+            projectId,
+            version: newVersion,
+            isLive: false,
+          })
+          .returning()
+          .get();
+
+        for (const page of pages) {
+          const route = (setAsMain && pages.length === 1) ? '/' : page.route;
+          await client
+            .insert(DeployPagesTable)
+            .values({
+              deployId: deploy.id,
+              route,
+              content: page.content,
+            })
+            .run();
+        }
+
+        success = true;
+      }
+    } catch {
+      error = 'Error al procesar los archivos.';
+    }
+  }
+}
+---
+
+<AdminLayout title={`Deploy — ${project.name}`}>
+  <div class="mx-auto max-w-2xl">
+    <div class="mb-8">
+      <a href={`/dashboard/projects/${projectId}`} class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted no-underline transition-colors hover:text-text-secondary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="m15 18-6-6 6-6"/>
+        </svg>
+        Volver a {project.name}
+      </a>
+      <h1 class="mt-2 font-display text-3xl font-bold tracking-tight">Nuevo Deploy</h1>
+      <p class="mt-1 text-text-secondary">Subi archivos HTML para crear una nueva version.</p>
+    </div>
+
+    {error && (
+      <div class="mb-6 rounded-[14px] border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+        {error}
+      </div>
+    )}
+
+    {success ? (
+      <div class="flex flex-col items-center rounded-[20px] border border-success/30 bg-success/5 py-12 text-center">
+        <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-success">
+            <circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <h3 class="mb-1 font-display text-lg font-semibold text-text-primary">Deploy creado!</h3>
+        <p class="mb-6 text-sm text-text-muted">Tu nueva version esta lista. Activala cuando quieras.</p>
+        <a
+          href={`/dashboard/projects/${projectId}`}
+          class="inline-flex items-center gap-2 rounded-[12px] bg-accent px-4 py-2 text-sm font-medium text-white no-underline transition-colors hover:bg-accent-hover"
+        >
+          Ver deploys
+        </a>
+      </div>
+    ) : (
+      <form method="POST" id="deployForm">
+        <input type="hidden" name="pages" id="pagesInput" />
+        <input type="hidden" name="setAsMain" id="setAsMainInput" value="" />
+
+        <div
+          id="dropZone"
+          class="relative flex flex-col items-center justify-center rounded-[20px] border-2 border-dashed border-border-default bg-surface-card py-16 transition-all hover:border-accent/50 hover:bg-accent/5"
+        >
+          <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-[14px] bg-surface-elevated">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-muted">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+          </div>
+          <p class="mb-1 text-sm font-medium text-text-primary">Arrastra archivos HTML aqui</p>
+          <p class="mb-4 text-xs text-text-muted">o haz click para seleccionar</p>
+          <input
+            type="file"
+            id="fileInput"
+            multiple
+            accept=".html,.htm"
+            class="absolute inset-0 cursor-pointer opacity-0"
+          />
+        </div>
+
+        <div id="fileList" class="mt-4 flex hidden flex-col gap-2"></div>
+
+        <div id="mainPagePrompt" class="hidden mt-4 rounded-[14px] border border-accent/30 bg-accent/5 p-4">
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" id="setAsMainCheckbox" class="mt-0.5 h-4 w-4 rounded accent-accent" />
+            <div>
+              <p class="text-sm font-medium text-text-primary">Hacer esta pagina principal?</p>
+              <p class="text-xs text-text-muted mt-0.5">
+                Como solo subiste un archivo que no es <code class="rounded bg-surface-elevated px-1 py-0.5 text-accent">index.html</code>,
+                podes configurarlo como la pagina principal (<code class="rounded bg-surface-elevated px-1 py-0.5 text-accent">/</code>).
+              </p>
+            </div>
+          </label>
+        </div>
+
+        <button
+          type="submit"
+          id="submitBtn"
+          disabled
+          class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[14px] bg-accent px-6 py-3 text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent-hover hover:shadow-[0_8px_30px_rgba(99,102,241,0.3)] cursor-pointer"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+          <span id="submitText">Subir Deploy</span>
+        </button>
+      </form>
+    )}
+  </div>
+
+  <script>
+    const dropZone = document.getElementById("dropZone") as HTMLDivElement;
+    const fileInput = document.getElementById("fileInput") as HTMLInputElement;
+    const fileList = document.getElementById("fileList") as HTMLDivElement;
+    const pagesInput = document.getElementById("pagesInput") as HTMLInputElement;
+    const setAsMainInput = document.getElementById("setAsMainInput") as HTMLInputElement;
+    const setAsMainCheckbox = document.getElementById("setAsMainCheckbox") as HTMLInputElement;
+    const mainPagePrompt = document.getElementById("mainPagePrompt") as HTMLDivElement;
+    const submitBtn = document.getElementById("submitBtn") as HTMLButtonElement;
+    const submitText = document.getElementById("submitText") as HTMLSpanElement;
+    const form = document.getElementById("deployForm") as HTMLFormElement;
+
+    let files: Array<{ route: string; content: string }> = [];
+
+    function getRouteFromFilename(name: string): string {
+      const base = name.replace(/\.html?$/i, '');
+      if (base === 'index' || base === '') return '/';
+      return '/' + base;
+    }
+
+    function updateMainPagePrompt() {
+      const isSingleNonIndex = files.length === 1 && files[0].route !== '/';
+      if (isSingleNonIndex) {
+        mainPagePrompt.classList.remove("hidden");
+      } else {
+        mainPagePrompt.classList.add("hidden");
+        setAsMainCheckbox.checked = false;
+      }
+    }
+
+    function renderFiles() {
+      if (files.length === 0) {
+        fileList.classList.add("hidden");
+        submitBtn.disabled = true;
+        mainPagePrompt.classList.add("hidden");
+        return;
+      }
+
+      fileList.classList.remove("hidden");
+      submitBtn.disabled = false;
+      submitText.textContent = `Subir Deploy (${files.length} archivo${files.length !== 1 ? 's' : ''})`;
+
+      fileList.innerHTML = files.map((f, i) => `
+        <div class="flex items-center justify-between rounded-[12px] border border-border-subtle bg-surface-card px-4 py-3">
+          <div class="flex items-center gap-3">
+            <div class="flex h-8 w-8 items-center justify-center rounded-[8px] bg-accent/10 text-accent">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+              </svg>
+            </div>
+            <div>
+              <p class="text-sm font-medium text-text-primary">${f.route}</p>
+              <p class="text-xs text-text-muted">${(f.content.length / 1024).toFixed(1)} KB</p>
+            </div>
+          </div>
+          <button type="button" data-index="${i}" class="remove-btn flex h-8 w-8 items-center justify-center rounded-[8px] text-text-muted transition-colors hover:bg-danger/5 hover:text-danger cursor-pointer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      `).join('');
+
+      fileList.querySelectorAll(".remove-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = Number(btn.getAttribute("data-index"));
+          files.splice(idx, 1);
+          renderFiles();
+          updateMainPagePrompt();
+        });
+      });
+
+      updateMainPagePrompt();
+    }
+
+    async function handleFiles(fileArray: FileList) {
+      for (const file of Array.from(fileArray)) {
+        if (!file.name.match(/\.html?$/i)) continue;
+        const content = await file.text();
+        const route = getRouteFromFilename(file.name);
+        files.push({ route, content });
+      }
+      renderFiles();
+    }
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("border-accent", "bg-accent/5");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("border-accent", "bg-accent/5");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("border-accent", "bg-accent/5");
+      if (e.dataTransfer?.files) handleFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files) handleFiles(fileInput.files);
+    });
+
+    form.addEventListener("submit", () => {
+      pagesInput.value = JSON.stringify(files);
+      setAsMainInput.value = setAsMainCheckbox.checked ? 'on' : '';
+    });
+  </script>
+</AdminLayout>

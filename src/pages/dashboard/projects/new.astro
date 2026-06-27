@@ -1,0 +1,137 @@
+---
+export const prerender = false;
+
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { client } from '@/db';
+import { ProjectsTable, UsersTable } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+
+const user = Astro.locals.user;
+
+if (!user || !user.is_admin) {
+  return Astro.redirect('/');
+}
+
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  const formData = await Astro.request.formData();
+  const name = formData.get('name') as string;
+  const slug = formData.get('slug') as string;
+  const description = formData.get('description') as string;
+
+  if (!name || !slug) {
+    error = 'Nombre y slug son requeridos.';
+  } else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    error = 'El slug solo puede contener minusculas, numeros y guiones.';
+  } else {
+    const dbUser = await client
+      .select()
+      .from(UsersTable)
+      .where(eq(UsersTable.susId, Number(user.id)))
+      .get();
+
+    if (!dbUser) {
+      error = 'Usuario no encontrado en la base de datos.';
+    } else {
+      const existing = await client
+        .select()
+        .from(ProjectsTable)
+        .where(eq(ProjectsTable.slug, slug))
+        .get();
+
+      if (existing) {
+        error = 'Ya existe un proyecto con ese slug.';
+      } else {
+        const result = await client
+          .insert(ProjectsTable)
+          .values({
+            ownerId: dbUser.id,
+            name,
+            slug,
+            description: description || null,
+          })
+          .returning()
+          .get();
+
+        return Astro.redirect(`/dashboard/projects/${result.id}`);
+      }
+    }
+  }
+}
+---
+
+<AdminLayout title="Nuevo Proyecto">
+  <div class="mx-auto max-w-lg">
+    <div class="mb-8">
+      <a href="/dashboard" class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted no-underline transition-colors hover:text-text-secondary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="m15 18-6-6 6-6"/>
+        </svg>
+        Volver al dashboard
+      </a>
+      <h1 class="mt-2 font-display text-3xl font-bold tracking-tight">Nuevo Proyecto</h1>
+      <p class="mt-1 text-text-secondary">Crea un proyecto para empezar a publicar.</p>
+    </div>
+
+    {error && (
+      <div class="mb-6 rounded-[14px] border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+        {error}
+      </div>
+    )}
+
+    <form method="POST" class="flex flex-col gap-5">
+      <div>
+        <label for="name" class="mb-1.5 block text-sm font-medium text-text-secondary">Nombre</label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          required
+          placeholder="Fixture de Mundial"
+          class="w-full rounded-[14px] border border-border-default bg-surface-card px-4 py-3 text-text-primary placeholder:text-text-faint outline-none transition-colors focus:border-accent"
+        />
+      </div>
+
+      <div>
+        <label for="slug" class="mb-1.5 block text-sm font-medium text-text-secondary">Slug</label>
+        <div class="flex items-center gap-0">
+          <span class="shrink-0 rounded-l-[14px] border border-r-0 border-border-default bg-surface-elevated px-3 py-3 text-sm text-text-muted">
+            /u/{user.username}/
+          </span>
+          <input
+            type="text"
+            id="slug"
+            name="slug"
+            required
+            pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+            placeholder="fixture-mundial"
+            class="w-full rounded-r-[14px] border border-border-default bg-surface-card px-4 py-3 text-text-primary placeholder:text-text-faint outline-none transition-colors focus:border-accent"
+          />
+        </div>
+        <p class="mt-1 text-xs text-text-faint">Minusculas, numeros y guiones solamente.</p>
+      </div>
+
+      <div>
+        <label for="description" class="mb-1.5 block text-sm font-medium text-text-secondary">Descripcion (opcional)</label>
+        <textarea
+          id="description"
+          name="description"
+          rows={3}
+          placeholder="Una descripcion corta del proyecto..."
+          class="w-full rounded-[14px] border border-border-default bg-surface-card px-4 py-3 text-text-primary placeholder:text-text-faint outline-none transition-colors focus:border-accent resize-none"
+        ></textarea>
+      </div>
+
+      <button
+        type="submit"
+        class="mt-2 inline-flex items-center justify-center gap-2 rounded-[14px] bg-accent px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-accent-hover hover:shadow-[0_8px_30px_rgba(99,102,241,0.3)] cursor-pointer"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Crear Proyecto
+      </button>
+    </form>
+  </div>
+</AdminLayout>

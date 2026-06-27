@@ -1,0 +1,93 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = "Labs by SaltoUruguayServer" } = Astro.props;
+const user = Astro.locals.user;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} — Labs</title>
+    <meta name="description" content={description} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="min-h-screen">
+    <nav
+      class="sticky top-0 z-50 border-b border-border-subtle bg-surface-base/80 backdrop-blur-xl"
+    >
+      <div
+        class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6"
+      >
+        <a
+          href="/dashboard"
+          class="flex items-center gap-3 text-text-primary no-underline"
+        >
+          <div
+            class="flex h-9 w-9 items-center justify-center rounded-[12px] bg-accent/10 text-accent"
+          >
+            <span class="font-display text-lg font-bold">L</span>
+          </div>
+          <span class="font-display text-lg font-semibold tracking-tight"
+            >Labs</span
+          >
+        </a>
+
+        <div class="flex items-center gap-4">
+          {
+            user ? (
+              <div class="flex items-center gap-3">
+                <span class="text-sm text-text-secondary">
+                  {user.username || user.name}
+                </span>
+                <button
+                  id="logoutBtn"
+                  class="rounded-[12px] border border-border-default bg-transparent px-4 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-card-hover hover:text-text-primary cursor-pointer"
+                >
+                  Salir
+                </button>
+              </div>
+            ) : (
+              <button
+                id="loginBtn"
+                class="rounded-[12px] bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover cursor-pointer"
+              >
+                Ingresar
+              </button>
+            )
+          }
+        </div>
+      </div>
+    </nav>
+
+    <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <slot />
+    </main>
+
+    <script>
+      import { handleSignIn } from "@/lib/auth-client";
+      import { signOut } from "auth-astro/client";
+
+      document
+        .getElementById("loginBtn")
+        ?.addEventListener("click", handleSignIn);
+      document
+        .getElementById("logoutBtn")
+        ?.addEventListener("click", async () => {
+          await signOut();
+        });
+    </script>
+  </body>
+</html>

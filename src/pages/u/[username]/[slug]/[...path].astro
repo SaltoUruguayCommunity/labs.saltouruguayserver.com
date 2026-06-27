@@ -1,0 +1,73 @@
+---
+export const prerender = false;
+
+import { client } from '@/db';
+import { UsersTable, ProjectsTable, DeploysTable, DeployPagesTable } from '@/db/schema';
+import { eq, and, desc } from 'drizzle-orm';
+
+const { username, slug, path } = Astro.params;
+const routePath = '/' + (path || '');
+
+const user = await client
+  .select()
+  .from(UsersTable)
+  .where(eq(UsersTable.username, username!))
+  .get();
+
+if (!user) {
+  return new Response('Not Found', { status: 404 });
+}
+
+const project = await client
+  .select()
+  .from(ProjectsTable)
+  .where(and(
+    eq(ProjectsTable.ownerId, user.id),
+    eq(ProjectsTable.slug, slug!)
+  ))
+  .get();
+
+if (!project) {
+  return new Response('Not Found', { status: 404 });
+}
+
+const liveDeploy = await client
+  .select()
+  .from(DeploysTable)
+  .where(and(
+    eq(DeploysTable.projectId, project.id),
+    eq(DeploysTable.isLive, true)
+  ))
+  .get();
+
+if (!liveDeploy) {
+  return new Response('No live version deployed yet.', {
+    status: 404,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
+const page = await client
+  .select()
+  .from(DeployPagesTable)
+  .where(and(
+    eq(DeployPagesTable.deployId, liveDeploy.id),
+    eq(DeployPagesTable.route, routePath)
+  ))
+  .get();
+
+if (!page) {
+  return new Response('Page not found in this deploy.', {
+    status: 404,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
+return new Response(page.content, {
+  headers: {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'public, max-age=0, must-revalidate',
+    'X-Robots-Tag': 'noindex',
+  },
+});
+---

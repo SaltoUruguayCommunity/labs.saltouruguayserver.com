@@ -1,0 +1,65 @@
+---
+interface Props {
+  name: string;
+  slug: string;
+  description?: string | null;
+  ownerUsername: string;
+  deployCount: number;
+  liveVersion?: number | null;
+  href: string;
+}
+
+const { name, slug, description, ownerUsername, deployCount, liveVersion, href } = Astro.props;
+const liveUrl = `/u/${ownerUsername}/${slug}`;
+---
+
+<div class="group relative rounded-[20px] border border-border-subtle bg-surface-card p-6 transition-all duration-300 hover:border-border-default hover:bg-surface-card-hover hover:shadow-[0_0_40px_-15px_rgba(99,102,241,0.15)]">
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0 flex-1">
+      <div class="mb-1 flex items-center gap-2">
+        <a href={href} class="font-display text-lg font-semibold text-text-primary truncate no-underline transition-colors hover:text-accent">
+          {name}
+        </a>
+        {liveVersion != null && (
+          <span class="shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
+            Live
+          </span>
+        )}
+      </div>
+      <p class="mb-3 text-sm text-text-muted">/{ownerUsername}/{slug}</p>
+      {description && (
+        <p class="text-sm text-text-secondary line-clamp-2">{description}</p>
+      )}
+    </div>
+  </div>
+
+  <div class="mt-4 flex items-center gap-4 border-t border-border-subtle pt-4">
+    <div class="flex items-center gap-1.5 text-xs text-text-muted">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+      </svg>
+      <span>{deployCount} deploy{deployCount !== 1 ? 's' : ''}</span>
+    </div>
+    {liveVersion != null && (
+      <>
+        <div class="flex items-center gap-1.5 text-xs text-text-muted">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+          </svg>
+          <span>v{liveVersion}</span>
+        </div>
+        <a
+          href={liveUrl}
+          target="_blank"
+          rel="noopener"
+          class="ml-auto inline-flex items-center gap-1 text-xs text-text-faint no-underline transition-colors hover:text-accent"
+        >
+          Ver live
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>
+          </svg>
+        </a>
+      </>
+    )}
+  </div>
+</div>
