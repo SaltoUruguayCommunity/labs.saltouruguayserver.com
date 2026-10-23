@@ -1,8 +1,18 @@
 ---
 export const prerender = false;
-
-if (!Astro.locals.user) {
-  return Astro.redirect("/auth/sus");
-}
-return Astro.redirect("/dashboard");
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import Icon from '@/components/Icon.astro';
+if (Astro.locals.user?.is_admin) return Astro.redirect('/dashboard');
 ---
+<AdminLayout title="De la idea a la web">
+  <section class="landing-hero">
+    <div class="hero-copy"><span class="eyebrow"><span class="tiny-dot"></span> SALTO URUGUAY LABS</span><h1>Ideas pequeñas.<br />Posibilidades <span>enormes.</span></h1><p>Tu rincón de internet para crear, probar y compartir. Publicá webs, miniproyectos y experimentos desde un mismo lugar.</p><div class="hero-actions"><a class="button" href="/auth/sus">{Astro.locals.user ? 'Volver a ingresar' : 'Empezar a crear'} <Icon name="arrow" size={18} /></a><a class="button button-secondary" href="#como-funciona">Conocer Labs <span>↓</span></a></div><p class="hero-note">{Astro.locals.user ? 'Tu cuenta necesita permisos de administrador para publicar.' : 'Ingresá con tu cuenta de Salto Uruguay. Publicación para administradores.'}</p></div>
+    <div class="launch-visual" aria-label="El recorrido de una idea a una web publicada">
+      <div class="visual-top"><span class="window-dots"><i></i><i></i><i></i></span><span>un nuevo experimento</span><Icon name="code" size={15} /></div>
+      <div class="visual-content"><span class="eyebrow">DE TU EDITOR AL MUNDO</span><div class="code-orbit"><Icon name="code" size={48} /></div><h2>Algo bueno empieza acá<span>.</span></h2><p>Tu próxima web está a un deploy de distancia.</p><div class="visual-pipeline"><span><Icon name="code" size={17} /> Creá</span><b>→</b><span><Icon name="upload" size={17} /> Subí</span><b>→</b><span><Icon name="globe" size={17} /> Compartí</span></div></div>
+      <div class="visual-bottom"><span class="tiny-dot"></span> Un espacio para experimentar <span class="mono">&lt;/&gt;</span></div>
+    </div>
+  </section>
+  <section id="como-funciona" class="how-section"><div class="section-heading"><div><span class="eyebrow">MENOS VUELTAS, MÁS IDEAS</span><h2>Creá. Publicá. Repetí.</h2></div><p>Un flujo simple para proyectos que<br />no necesitan complicarse.</p></div><div class="steps-grid">{[{ n: '01', icon: 'code', title: 'Dale un lugar a tu idea', text: 'Creá un proyecto, elegí su nombre y definí la dirección de tu web.' },{ n: '02', icon: 'upload', title: 'Subí tu experimento', text: 'Arrastrá un ZIP o tus archivos HTML y guardá una nueva versión de tu proyecto.' },{ n: '03', icon: 'globe', title: 'Compartilo con el mundo', text: 'Activá la versión que quieras publicar y compartí su enlace.' }].map(step => <article class="step-card"><div><Icon name={step.icon} size={24} /><span>{step.n}</span></div><h3>{step.title}</h3><p>{step.text}</p></article>)}</div></section>
+</AdminLayout>
+

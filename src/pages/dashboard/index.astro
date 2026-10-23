@@ -2,6 +2,7 @@
 export const prerender = false;
 
 import AdminLayout from '@/layouts/AdminLayout.astro';
+import Icon from '@/components/Icon.astro';
 import ProjectCard from '@/components/ProjectCard.astro';
 import { client } from '@/db';
 import { ProjectsTable, DeploysTable, UsersTable } from '@/db/schema';
@@ -35,7 +36,7 @@ const deployCounts = projectIds.length > 0
         count: DeploysTable.id,
       })
       .from(DeploysTable)
-      .where(projectIds.length > 0 ? undefined : undefined)
+
       .all()
   : [];
 
@@ -61,55 +62,32 @@ for (const d of liveDeploys) {
 }
 ---
 
-<AdminLayout title="Dashboard">
-  <div class="mb-8 flex items-center justify-between">
-    <div>
-      <h1 class="font-display text-3xl font-bold tracking-tight">Dashboard</h1>
-      <p class="mt-1 text-text-secondary">Tus proyectos en Labs</p>
-    </div>
-    <a
-      href="/dashboard/projects/new"
-      class="inline-flex items-center gap-2 rounded-[14px] bg-accent px-5 py-2.5 text-sm font-semibold text-white no-underline transition-all hover:bg-accent-hover hover:shadow-[0_8px_30px_rgba(99,102,241,0.3)]"
-    >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-      Nuevo Proyecto
-    </a>
-  </div>
-
-  {projects.length === 0 ? (
-    <div class="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-border-default py-20">
-      <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-[16px] bg-surface-card">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-muted">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-        </svg>
-      </div>
-      <h3 class="mb-1 font-display text-lg font-semibold text-text-primary">Sin proyectos</h3>
-      <p class="mb-6 text-sm text-text-muted">Crea tu primer proyecto para empezar a publicar.</p>
-      <a
-        href="/dashboard/projects/new"
-        class="inline-flex items-center gap-2 rounded-[12px] bg-accent px-4 py-2 text-sm font-medium text-white no-underline transition-colors hover:bg-accent-hover"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-        Crear proyecto
-      </a>
-    </div>
-  ) : (
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {projects.map((project) => (
-        <ProjectCard
-          name={project.name}
-          slug={project.slug}
-          description={project.description}
-          ownerUsername={project.ownerUsername}
-          deployCount={deployCountMap.get(project.id) || 0}
-          liveVersion={liveMap.get(project.id) ?? null}
-          href={`/dashboard/projects/${project.id}`}
-        />
-      ))}
-    </div>
-  )}
+<AdminLayout title="Proyectos">
+  <div class="page-heading"><div><span class="eyebrow">TU ESPACIO DE CREACIÓN</span><h1>Proyectos<span class="brand-dot">.</span></h1><p>De una idea suelta a tu próxima web. Todo empieza acá.</p></div><a href="/dashboard/projects/new" class="button"><Icon name="plus" size={18} /> Nuevo proyecto</a></div>
+  <section class="stats-grid" aria-label="Resumen de proyectos"><div><span class="stat-icon"><Icon name="grid" /></span><span>Proyectos<strong>{projects.length.toString().padStart(2, '0')}</strong></span></div><div><span class="stat-icon green"><Icon name="globe" /></span><span>En producción<strong>{projects.filter(p => liveMap.has(p.id)).length.toString().padStart(2, '0')}</strong></span></div><div><span class="stat-icon blue"><Icon name="layers" /></span><span>Deploys totales<strong>{deployCounts.length.toString().padStart(2, '0')}</strong></span></div></section>
+  <section class="project-section" aria-labelledby="projects-heading">
+    <div class="projects-heading"><h2 id="projects-heading">Tus experimentos <span>{projects.length}</span></h2><span class="muted-caption">Un lugar para cada idea.</span></div>
+    {projects.length > 0 && <div class="project-toolbar"><label class="search-field"><Icon name="search" size={18} /><span class="sr-only">Buscar proyectos</span><input id="project-search" type="search" placeholder="Buscar un proyecto…" /></label><div class="filter-buttons" role="group" aria-label="Filtrar por publicación"><button data-filter="all" aria-pressed="true">Todos</button><button data-filter="live" aria-pressed="false">Publicados</button><button data-filter="draft" aria-pressed="false">Sin publicar</button></div></div>}
+    {projects.length === 0 ? <div class="empty-projects"><span class="empty-icon"><Icon name="code" size={36} /></span><span class="eyebrow">EL COMIENZO DE ALGO BUENO</span><h2>Tu próxima idea vive acá.</h2><p>Una web, una herramienta o ese experimento que tenés pendiente.<br />Creá tu primer proyecto y dale un lugar en internet.</p><a href="/dashboard/projects/new" class="button"><Icon name="plus" size={17} /> Crear mi primer proyecto</a><span class="empty-note">Creá el proyecto · Subí tus HTML · Publicá tu versión</span></div> : <div class="projects-grid">{projects.map(project => <ProjectCard name={project.name} slug={project.slug} description={project.description} ownerUsername={project.ownerUsername} deployCount={deployCountMap.get(project.id) || 0} liveVersion={liveMap.get(project.id) ?? null} href={`/dashboard/projects/${project.id}`} />)}</div>}
+    <p id="no-results" class="no-results" hidden>No encontramos proyectos con esos filtros. Probá con otra búsqueda.</p>
+    <p id="result-count" class="sr-only" aria-live="polite"></p>
+  </section>
+  <aside class="help-strip"><span class="project-icon"><Icon name="upload" /></span><div><h3>Del archivo a la web, sin vueltas.</h3><p>Subí tus HTML, gestioná versiones y elegí cuál compartir con la comunidad.</p></div><a href="/#como-funciona">Cómo funciona <Icon name="arrow" size={16} /></a></aside>
+  <script>
+    const search = document.querySelector<HTMLInputElement>('#project-search');
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-project]'));
+    const filters = document.querySelectorAll<HTMLButtonElement>('[data-filter]');
+    let selected = 'all';
+    function updateProjects() {
+      const query = (search?.value || '').trim().toLocaleLowerCase();
+      let count = 0;
+      cards.forEach(card => { const visible = (card.dataset.search || '').includes(query) && (selected === 'all' || card.dataset.status === selected); card.hidden = !visible; if (visible) count++; });
+      const empty = document.querySelector<HTMLElement>('#no-results');
+      if (empty) empty.hidden = count > 0 || cards.length === 0;
+      const status = document.querySelector('#result-count');
+      if (status) status.textContent = `${count} proyectos encontrados`;
+    }
+    search?.addEventListener('input', updateProjects);
+    filters.forEach(button => button.addEventListener('click', () => { selected = button.dataset.filter || 'all'; filters.forEach(filter => filter.setAttribute('aria-pressed', String(filter === button))); updateProjects(); }));
+  </script>
 </AdminLayout>

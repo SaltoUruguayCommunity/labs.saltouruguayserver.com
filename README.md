@@ -41,3 +41,25 @@ All commands are run from the root of the project, from a terminal:
 ## 👀 Want to learn more?
 
 Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+
+## Publicar un ZIP en Labs
+
+En **Nuevo Deploy**, seleccioná o arrastrá un ZIP con la web estática ya compilada.
+Incluí `index.html`, CSS, JavaScript, imágenes y fuentes. Labs conserva las carpetas
+internas y elimina automáticamente una carpeta contenedora común. No ejecuta builds
+ni servidores: para Vite u otros frameworks, comprimí el contenido de `dist` o `build`.
+
+Usá enlaces relativos (`./assets/app.js`, `./style.css`), ya que la web se sirve desde
+`/u/usuario/proyecto/`. En Vite configurá `base: './'` antes de compilar.
+Los enlaces absolutos como `/assets/app.js` apuntan a la raíz de Labs.
+
+Límites: 3 MB de ZIP, 8 MB descomprimidos, 500 archivos y 512 KB por archivo.
+Se omiten archivos ocultos, `__MACOSX` y `node_modules`; se rechazan rutas inválidas
+y tipos que no correspondan a archivos estáticos. La versión queda sin publicar
+hasta que se active desde el proyecto, igual que las subidas HTML individuales.
+
+Los recursos del ZIP se guardan en `deploy_pages.content` con un prefijo versionado,
+MIME y base64. Los HTML de versiones anteriores mantienen su formato original;
+no se necesita una migración. La creación de cada versión usa una transacción.
+
+Pruebas: `node --experimental-strip-types --test src/lib/deploy-files.test.ts`.

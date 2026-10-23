@@ -3,10 +3,11 @@ export const prerender = false;
 
 import { client } from '@/db';
 import { UsersTable, ProjectsTable, DeploysTable, DeployPagesTable } from '@/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { decodeContent, routeCandidates } from '@/lib/deploy-files';
+import { eq, and, inArray } from 'drizzle-orm';
 
 const { username, slug, path } = Astro.params;
-const routePath = '/' + (path || '');
+const candidates = routeCandidates(path || '');
 
 const user = await client
   .select()
@@ -47,14 +48,15 @@ if (!liveDeploy) {
   });
 }
 
-const page = await client
+const matches = await client
   .select()
   .from(DeployPagesTable)
   .where(and(
     eq(DeployPagesTable.deployId, liveDeploy.id),
-    eq(DeployPagesTable.route, routePath)
+    inArray(DeployPagesTable.route, candidates)
   ))
-  .get();
+  .all();
+const page = candidates.map(route => matches.find(page => page.route === route)).find(Boolean);
 
 if (!page) {
   return new Response('Page not found in this deploy.', {
@@ -63,11 +65,21 @@ if (!page) {
   });
 }
 
-return new Response(page.content, {
+// A directory URL must end in / so the browser resolves relative assets correctly.
+if ((page.route.endsWith('/index.html') || page.route.endsWith('/index.htm')) && !/\/index\.html?$/.test(Astro.url.pathname) && !Astro.url.pathname.endsWith('/')) {
+  const target = new URL(Astro.url);
+  target.pathname += '/';
+  return Astro.redirect(target.pathname + target.search, 308);
+}
+const asset = decodeContent(page.content);
+return new Response(asset.body, {
   headers: {
-    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Type': asset.mime,
+    'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'public, max-age=0, must-revalidate',
     'X-Robots-Tag': 'noindex',
   },
 });
 ---
+
+

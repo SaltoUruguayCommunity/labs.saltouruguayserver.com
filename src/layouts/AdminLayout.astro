@@ -1,93 +1,39 @@
 ---
-import "../styles/global.css";
-
-interface Props {
-  title: string;
-  description?: string;
-}
-
-const { title, description = "Labs by SaltoUruguayServer" } = Astro.props;
+import '../styles/global.css';
+import Icon from '../components/Icon.astro';
+interface Props { title: string; description?: string; }
+const { title, description = 'Publicá y gestioná tus proyectos web en Salto Uruguay Server.' } = Astro.props;
 const user = Astro.locals.user;
+const isDashboard = Astro.url.pathname.startsWith('/dashboard');
 ---
-
 <!doctype html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{title} — Labs</title>
+    <title>{title} — Labs · Salto Uruguay</title>
     <meta name="description" content={description} />
+    <link rel="icon" href="/salto.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
-  <body class="min-h-screen">
-    <nav
-      class="sticky top-0 z-50 border-b border-border-subtle bg-surface-base/80 backdrop-blur-xl"
-    >
-      <div
-        class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6"
-      >
-        <a
-          href="/dashboard"
-          class="flex items-center gap-3 text-text-primary no-underline"
-        >
-          <div
-            class="flex h-9 w-9 items-center justify-center rounded-[12px] bg-accent/10 text-accent"
-          >
-            <span class="font-display text-lg font-bold">L</span>
-          </div>
-          <span class="font-display text-lg font-semibold tracking-tight"
-            >Labs</span
-          >
-        </a>
-
-        <div class="flex items-center gap-4">
-          {
-            user ? (
-              <div class="flex items-center gap-3">
-                <span class="text-sm text-text-secondary">
-                  {user.username || user.name}
-                </span>
-                <button
-                  id="logoutBtn"
-                  class="rounded-[12px] border border-border-default bg-transparent px-4 py-2 text-sm text-text-secondary transition-colors hover:bg-surface-card-hover hover:text-text-primary cursor-pointer"
-                >
-                  Salir
-                </button>
-              </div>
-            ) : (
-              <button
-                id="loginBtn"
-                class="rounded-[12px] bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover cursor-pointer"
-              >
-                Ingresar
-              </button>
-            )
-          }
+  <body>
+    <a class="skip-link" href="#main">Ir al contenido</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a href="/" class="brand" aria-label="Labs, inicio"><img src="/salto.svg" alt="" width="32" height="32" /><span class="brand-divider">/</span><strong>labs<span class="brand-dot">.</span></strong><span class="beta-label">BETA</span></a>
+        <div class="header-actions"><a class="community-link" href="https://saltouruguayserver.com" target="_blank" rel="noopener">Salto Uruguay <Icon name="arrow" size={14} /></a>
+          {user ? <><span class="user-chip"><span class="avatar">{(user.username || user.name || 'U').slice(0, 1).toUpperCase()}</span><span>{user.username || user.name}</span></span><button id="logoutBtn" class="quiet-button">Salir</button></> : <a href="/auth/sus" class="button button-small">Ingresar <Icon name="arrow" size={15} /></a>}
         </div>
       </div>
-    </nav>
-
-    <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <slot />
-    </main>
-
+      <nav class="workspace-nav" aria-label="Navegación principal"><a href="/dashboard" class:list={[{ active: isDashboard }]} aria-current={isDashboard ? 'page' : undefined}><Icon name="grid" size={16} /> Proyectos</a><a href="/#como-funciona">Cómo funciona <Icon name="arrow" size={13} /></a><span class="workspace-label">EL LABORATORIO DE LA COMUNIDAD</span></nav>
+    </header>
+    <main id="main" class="workspace-main"><slot /></main>
+    <footer class="site-footer"><a href="/" class="footer-brand">labs. <span>por Salto Uruguay Server</span></a><span>Un espacio para hacer que las ideas pasen.</span><a href="https://saltouruguayserver.com" target="_blank" rel="noopener">Hecho en comunidad ↗</a></footer>
     <script>
-      import { handleSignIn } from "@/lib/auth-client";
-      import { signOut } from "auth-astro/client";
-
-      document
-        .getElementById("loginBtn")
-        ?.addEventListener("click", handleSignIn);
-      document
-        .getElementById("logoutBtn")
-        ?.addEventListener("click", async () => {
-          await signOut();
-        });
+      import { signOut } from 'auth-astro/client';
+      document.getElementById('logoutBtn')?.addEventListener('click', async () => { await signOut(); });
     </script>
   </body>
 </html>

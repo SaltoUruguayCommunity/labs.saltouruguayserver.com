@@ -4,6 +4,7 @@ export const prerender = false;
 import AdminLayout from '@/layouts/AdminLayout.astro';
 import { client } from '@/db';
 import { ProjectsTable, DeploysTable, DeployPagesTable, UsersTable } from '@/db/schema';
+import { extractZip, parseLegacyPages, MAX_UPLOAD, UploadError } from '@/lib/deploy-files';
 import { eq, max } from 'drizzle-orm';
 
 const user = Astro.locals.user;
@@ -38,54 +39,24 @@ let error = '';
 let success = false;
 
 if (Astro.request.method === 'POST') {
-  const formData = await Astro.request.formData();
-  const pagesJson = formData.get('pages') as string;
-  const setAsMain = formData.get('setAsMain') === 'on';
-
-  if (!pagesJson) {
-    error = 'No se enviaron archivos.';
-  } else {
-    try {
-      const pages: Array<{ route: string; content: string }> = JSON.parse(pagesJson);
-
-      if (pages.length === 0) {
-        error = 'Subi al menos un archivo HTML.';
-      } else {
-        const maxVersion = await client
-          .select({ value: max(DeploysTable.version) })
-          .from(DeploysTable)
-          .where(eq(DeploysTable.projectId, projectId))
-          .get();
-
-        const newVersion = (maxVersion?.value ?? 0) + 1;
-
-        const deploy = await client
-          .insert(DeploysTable)
-          .values({
-            projectId,
-            version: newVersion,
-            isLive: false,
-          })
-          .returning()
-          .get();
-
-        for (const page of pages) {
-          const route = (setAsMain && pages.length === 1) ? '/' : page.route;
-          await client
-            .insert(DeployPagesTable)
-            .values({
-              deployId: deploy.id,
-              route,
-              content: page.content,
-            })
-            .run();
-        }
-
-        success = true;
+  try {
+    const length = Number(Astro.request.headers.get('content-length'));
+    if (length > MAX_UPLOAD + 256 * 1024) throw new UploadError('La subida no puede superar 3 MB.');
+    const formData = await Astro.request.formData();
+    const zip = formData.get('archive');
+    const pages = zip instanceof File && zip.size > 0
+      ? (zip.size <= MAX_UPLOAD ? extractZip(new Uint8Array(await zip.arrayBuffer())) : (() => { throw new UploadError('El ZIP no puede superar 3 MB.'); })())
+      : parseLegacyPages(formData.get('pages'), formData.get('setAsMain') === 'on');
+    await client.transaction(async tx => {
+      const maxVersion = await tx.select({ value: max(DeploysTable.version) }).from(DeploysTable).where(eq(DeploysTable.projectId, projectId)).get();
+      const deploy = await tx.insert(DeploysTable).values({ projectId, version: (maxVersion?.value ?? 0) + 1, isLive: false }).returning().get();
+      for (const page of pages) {
+        await tx.insert(DeployPagesTable).values({ deployId: deploy.id, route: page.route, content: page.content }).run();
       }
-    } catch {
-      error = 'Error al procesar los archivos.';
-    }
+    });
+    success = true;
+  } catch (cause) {
+    error = cause instanceof UploadError ? cause.message : 'No se pudo crear el deploy. Revisá los archivos e intentá de nuevo.';
   }
 }
 ---
@@ -100,7 +71,7 @@ if (Astro.request.method === 'POST') {
         Volver a {project.name}
       </a>
       <h1 class="mt-2 font-display text-3xl font-bold tracking-tight">Nuevo Deploy</h1>
-      <p class="mt-1 text-text-secondary">Subi archivos HTML para crear una nueva version.</p>
+      <p class="mt-1 text-text-secondary">Subí un ZIP con tu web estática o archivos HTML para crear una nueva versión.</p>
     </div>
 
     {error && (
@@ -126,7 +97,7 @@ if (Astro.request.method === 'POST') {
         </a>
       </div>
     ) : (
-      <form method="POST" id="deployForm">
+      <form method="POST" enctype="multipart/form-data" id="deployForm">
         <input type="hidden" name="pages" id="pagesInput" />
         <input type="hidden" name="setAsMain" id="setAsMainInput" value="" />
 
@@ -139,18 +110,18 @@ if (Astro.request.method === 'POST') {
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
             </svg>
           </div>
-          <p class="mb-1 text-sm font-medium text-text-primary">Arrastra archivos HTML aqui</p>
+          <p class="mb-1 text-sm font-medium text-text-primary">Arrastrá tu ZIP o archivos HTML acá</p>
           <p class="mb-4 text-xs text-text-muted">o haz click para seleccionar</p>
           <input
             type="file"
             id="fileInput"
             multiple
-            accept=".html,.htm"
+            accept=".zip,.html,.htm" aria-label="Seleccionar ZIP o archivos HTML"
             class="absolute inset-0 cursor-pointer opacity-0"
           />
         </div>
 
-        <div id="fileList" class="mt-4 flex hidden flex-col gap-2"></div>
+        <p class="mt-3 text-xs text-text-muted">ZIP de hasta 3 MB · 500 archivos · 512 KB por archivo. Incluí index.html y sus carpetas de CSS, JS e imágenes. Usá rutas relativas en tu web.</p><p id="uploadError" role="alert" class="mt-3 text-sm text-danger"></p><div id="fileList" class="mt-4 flex hidden flex-col gap-2"></div>
 
         <div id="mainPagePrompt" class="hidden mt-4 rounded-[14px] border border-accent/30 bg-accent/5 p-4">
           <label class="flex items-start gap-3 cursor-pointer">
@@ -192,6 +163,7 @@ if (Astro.request.method === 'POST') {
     const submitText = document.getElementById("submitText") as HTMLSpanElement;
     const form = document.getElementById("deployForm") as HTMLFormElement;
 
+    let archive: File | null = null;
     let files: Array<{ route: string; content: string }> = [];
 
     function getRouteFromFilename(name: string): string {
@@ -201,7 +173,7 @@ if (Astro.request.method === 'POST') {
     }
 
     function updateMainPagePrompt() {
-      const isSingleNonIndex = files.length === 1 && files[0].route !== '/';
+      const isSingleNonIndex = !archive && files.length === 1 && files[0].route !== '/';
       if (isSingleNonIndex) {
         mainPagePrompt.classList.remove("hidden");
       } else {
@@ -211,7 +183,7 @@ if (Astro.request.method === 'POST') {
     }
 
     function renderFiles() {
-      if (files.length === 0) {
+      if (files.length === 0 && !archive) {
         fileList.classList.add("hidden");
         submitBtn.disabled = true;
         mainPagePrompt.classList.add("hidden");
@@ -222,6 +194,7 @@ if (Astro.request.method === 'POST') {
       submitBtn.disabled = false;
       submitText.textContent = `Subir Deploy (${files.length} archivo${files.length !== 1 ? 's' : ''})`;
 
+      if (archive) { fileList.textContent = `${archive.name} · ${(archive.size / 1024).toFixed(1)} KB`; submitText.textContent = "Subir ZIP"; updateMainPagePrompt(); return; }
       fileList.innerHTML = files.map((f, i) => `
         <div class="flex items-center justify-between rounded-[12px] border border-border-subtle bg-surface-card px-4 py-3">
           <div class="flex items-center gap-3">
@@ -232,7 +205,7 @@ if (Astro.request.method === 'POST') {
               </svg>
             </div>
             <div>
-              <p class="text-sm font-medium text-text-primary">${f.route}</p>
+              <p class="text-sm font-medium text-text-primary">${f.route.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`)}</p>
               <p class="text-xs text-text-muted">${(f.content.length / 1024).toFixed(1)} KB</p>
             </div>
           </div>
@@ -257,7 +230,17 @@ if (Astro.request.method === 'POST') {
     }
 
     async function handleFiles(fileArray: FileList) {
-      for (const file of Array.from(fileArray)) {
+      const selected = Array.from(fileArray);
+      const error = document.getElementById('uploadError')!;
+      error.textContent = '';
+      const zip = selected.find(file => /\.zip$/i.test(file.name));
+      if (zip) {
+        if (selected.length !== 1 || zip.size > 3 * 1024 * 1024) { error.textContent = 'Seleccioná un solo ZIP de hasta 3 MB, sin mezclarlo con HTML.'; return; }
+        archive = zip; files = []; renderFiles(); return;
+      }
+      if (selected.some(file => !/\.html?$/i.test(file.name))) { error.textContent = 'Seleccioná un ZIP o archivos HTML.'; return; }
+      archive = null;
+      for (const file of selected) {
         if (!file.name.match(/\.html?$/i)) continue;
         const content = await file.text();
         const route = getRouteFromFilename(file.name);
@@ -266,28 +249,33 @@ if (Astro.request.method === 'POST') {
       renderFiles();
     }
 
-    dropZone.addEventListener("dragover", (e) => {
+    dropZone?.addEventListener("dragover", (e) => {
       e.preventDefault();
       dropZone.classList.add("border-accent", "bg-accent/5");
     });
 
-    dropZone.addEventListener("dragleave", () => {
+    dropZone?.addEventListener("dragleave", () => {
       dropZone.classList.remove("border-accent", "bg-accent/5");
     });
 
-    dropZone.addEventListener("drop", (e) => {
+    dropZone?.addEventListener("drop", (e) => {
       e.preventDefault();
       dropZone.classList.remove("border-accent", "bg-accent/5");
       if (e.dataTransfer?.files) handleFiles(e.dataTransfer.files);
     });
 
-    fileInput.addEventListener("change", () => {
+    fileInput?.addEventListener("change", () => {
       if (fileInput.files) handleFiles(fileInput.files);
     });
 
-    form.addEventListener("submit", () => {
+    form?.addEventListener('formdata', event => {
+      if (archive) event.formData.set('archive', archive);
+    });
+    form?.addEventListener("submit", () => {
       pagesInput.value = JSON.stringify(files);
       setAsMainInput.value = setAsMainCheckbox.checked ? 'on' : '';
     });
   </script>
 </AdminLayout>
+
+
