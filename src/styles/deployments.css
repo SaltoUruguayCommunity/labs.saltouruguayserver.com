@@ -1,0 +1,96 @@
+/* Version management shares the Labs workspace tokens and components. */
+.deploy-breadcrumb { display: flex; gap: 12px; align-items: center; color: #877c96; font-size: 11px; margin-bottom: 28px; }
+.deploy-breadcrumb a:hover { color: #c09aff; }
+.deploy-breadcrumb > span:last-child { color: #c4b9d2; overflow-wrap: anywhere; }
+.deploy-heading { margin-bottom: 28px; }
+.deploy-heading h1 { overflow-wrap: anywhere; }
+.deploy-heading p { max-width: 700px; line-height: 1.8; }
+.deploy-section-nav { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ffffff12; margin-bottom: 30px; color: #796e87; font-size: 10px; }
+.deploy-section-nav .selected { display: flex; gap: 10px; align-items: center; padding: 0 0 16px; color: #d4baf8; border-bottom: 2px solid #a86bff; margin-bottom: -1px; font-size: 12px; }
+.deploy-section-nav b { font-size: 9px; font-weight: 500; background: #9146ff15; border: 1px solid #9146ff30; border-radius: 5px; padding: 2px 6px; }
+.production-panel { border: 1px solid #ffffff18; background: radial-gradient(ellipse at top left, #9146ff0b, transparent 70%), #ffffff02; border-radius: 12px; overflow: hidden; margin-bottom: 42px; }
+.production-panel.is-live { border-color: #50b99335; background: radial-gradient(ellipse at top left, #10b98108, transparent 70%), #ffffff02; }
+.production-overview { display: flex; gap: 18px; align-items: center; padding: 28px; }
+.production-globe { height: 52px; width: 52px; display: grid; place-items: center; flex-shrink: 0; background: #9146ff0d; border: 1px solid #9146ff25; border-radius: 13px; color: #b18ce5; }
+.is-live .production-globe { color: #70d6ab; border-color: #10b98130; background: #10b9810b; }
+.production-overview h2 { font: 500 24px var(--font-display); letter-spacing: -.6px; margin: 8px 0; }
+.production-overview p { color: #9b90a7; font-size: 11px; line-height: 1.7; }
+.production-overview > .status-badge { margin-left: auto; white-space: nowrap; }
+.production-meta { display: grid; grid-template-columns: 2fr .75fr 1fr; gap: 24px; padding: 0 28px 28px; }
+.production-meta > div { min-width: 0; }
+.production-meta > div > span { display: block; color: #8f829c; font-size: 10px; margin-bottom: 9px; }
+.production-meta p, .production-meta a { font-size: 11px; color: #cdc1da; line-height: 1.7; }
+.production-meta .production-address { display: flex; gap: 8px; align-items: center; font-family: var(--font-mono); font-size: 10px; overflow-wrap: anywhere; }
+.production-address svg { flex-shrink: 0; }
+.production-meta a:hover { color: #c09aff; }
+.production-actions { display: flex; align-items: center; gap: 20px; border-top: 1px solid #ffffff0c; background: #ffffff02; padding: 15px 28px; }
+.production-actions .quiet-button { font-size: 10px; cursor: pointer; }
+.production-actions > span { margin-left: auto; display: flex; gap: 8px; align-items: center; color: #7cbe9f; font-size: 10px; }
+.production-actions .tiny-dot { background: #70d6ab; box-shadow: none; }
+.deployment-list { display: flex; flex-direction: column; gap: 12px; }
+.deployment-card { border: 1px solid #ffffff13; border-radius: 10px; overflow: hidden; background: #ffffff02; transition: border-color .2s; }
+.deployment-card:hover { border-color: #9146ff40; }
+.deployment-card.deployment-live { border-color: #10b98130; }
+.deployment-row { display: flex; align-items: center; gap: 18px; padding: 22px; }
+.deployment-version { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px; height: 57px; width: 57px; flex-shrink: 0; border: 1px solid #9146ff25; border-radius: 10px; color: #b193d6; background: #9146ff09; }
+.deployment-version strong { font: 500 12px var(--font-mono); }
+.deployment-live .deployment-version { color: #70d6ab; border-color: #10b98125; background: #10b98108; }
+.deployment-description { flex: 1; min-width: 0; }
+.deployment-description > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.deployment-description h3 { font: 500 15px var(--font-display); }
+.deployment-description > p { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; color: #92859f; font-size: 10px; margin-top: 11px; }
+.latest-label { color: #aa88d8; font-size: 9px; }
+.deployment-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.deployment-actions button { cursor: pointer; }
+.deploy-delete { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid #ffffff12; background: transparent; border-radius: 6px; color: #887b96; transition: color .2s, border-color .2s; }
+.deploy-delete:hover { color: #fb8d99; border-color: #ef444440; background: #ef444408; }
+.deployment-files { border-top: 1px solid #ffffff0c; }
+.deployment-files > summary { list-style: none; display: flex; gap: 8px; align-items: center; padding: 12px 22px; color: #9c8bab; cursor: pointer; font-size: 10px; }
+.deployment-files > summary::-webkit-details-marker { display: none; }
+.deployment-files > summary:hover { color: #c9a9f1; background: #9146ff04; }
+.file-count { color: #74677f; font-family: var(--font-mono); }
+.details-chevron { margin-left: auto; font-size: 15px; transition: transform .2s; }
+.deployment-files[open] .details-chevron { transform: rotate(180deg); }
+.deployment-file-list { max-height: 310px; overflow: auto; border-top: 1px solid #ffffff0c; }
+.deployment-file { display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid #ffffff06; font-size: 10px; color: #9885aa; }
+.deployment-file:last-child { border-bottom: 0; }
+.deployment-file:hover { background: #ffffff02; }
+.deployment-file > svg { flex-shrink: 0; color: #a076ce; }
+.deployment-file > code { flex: 1; min-width: 0; overflow-wrap: anywhere; color: #bcb0cb; font-family: var(--font-mono); }
+.deployment-file > span { flex-shrink: 0; color: #8d7c9b; }
+.deployment-file a { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 5px; }
+.deployment-file a:hover { background: #9146ff15; color: #c09aff; }
+.project-settings { margin-top: 35px; border-top: 1px solid #ffffff10; color: #95899f; font-size: 11px; }
+.project-settings > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 20px 0; list-style: none; }
+.project-settings > summary::-webkit-details-marker { display: none; }
+.project-settings > summary:hover { color: white; }
+.project-danger { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px; background: #ef444404; border: 1px solid #ef444425; border-radius: 9px; }
+.project-danger h3 { color: #e5b7c2; font-size: 12px; margin-bottom: 8px; }
+.project-danger p { font-size: 10px; line-height: 1.7; }
+.deploy-danger-button { border: 1px solid #ef444435; background: #ef44440a; border-radius: 7px; padding: 10px 14px; color: #f090a1; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.deploy-danger-button:hover { background: #ef444418; }
+@media (max-width: 900px) {
+  .deployment-row { flex-wrap: wrap; }
+  .deployment-actions { margin-left: 75px; }
+  .production-meta { grid-template-columns: 1.5fr .7fr 1fr; gap: 16px; }
+}
+@media (max-width: 600px) {
+  .deploy-breadcrumb { margin-bottom: 22px; }
+  .deploy-section-nav > span:last-child { display: none; }
+  .production-overview { padding: 22px; gap: 12px; flex-wrap: wrap; }
+  .production-globe { width: 40px; height: 40px; }
+  .production-overview > div:nth-child(2) { flex: 1; min-width: 160px; }
+  .production-overview h2 { font-size: 20px; }
+  .production-overview > .status-badge { margin-left: 52px; }
+  .production-meta { padding: 0 22px 22px; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .production-meta > div:first-child { grid-column: 1 / -1; }
+  .production-actions { padding: 15px 22px; gap: 16px; flex-wrap: wrap; }
+  .production-actions > span { margin-left: 0; width: 100%; }
+  .deployment-row { padding: 18px; gap: 12px; }
+  .deployment-version { width: 45px; height: 52px; }
+  .deployment-description > div { gap: 7px; }
+  .deployment-description > p { gap: 6px; line-height: 1.8; }
+  .deployment-actions { margin-left: 57px; flex-wrap: wrap; }
+  .deployment-files > summary, .deployment-file { padding-inline: 18px; }
+  .project-danger { align-items: flex-start; flex-direction: column; gap: 16px; }
+}

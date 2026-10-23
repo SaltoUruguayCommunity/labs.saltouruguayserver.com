@@ -1,10 +1,13 @@
 ---
 export const prerender = false;
 
+import { Buffer } from 'node:buffer';
+import Icon from '@/components/Icon.astro';
+import '@/styles/deployments.css';
 import AdminLayout from '@/layouts/AdminLayout.astro';
 import { client } from '@/db';
 import { ProjectsTable, DeploysTable, DeployPagesTable, UsersTable } from '@/db/schema';
-import { eq, desc, asc } from 'drizzle-orm';
+import { eq, desc, asc, inArray, and } from 'drizzle-orm';
 
 const user = Astro.locals.user;
 
@@ -40,6 +43,8 @@ if (Astro.request.method === 'POST') {
 
   if (action === 'set-live') {
     const version = Number(formData.get('version'));
+    const target = await client.select({ id: DeploysTable.id }).from(DeploysTable).where(and(eq(DeploysTable.projectId, projectId), eq(DeploysTable.version, version))).get();
+    if (!target) return Astro.redirect('/dashboard/projects/' + projectId);
     const deploysAll = await client.select().from(DeploysTable).where(eq(DeploysTable.projectId, projectId)).all();
     for (const d of deploysAll) {
       await client.update(DeploysTable).set({ isLive: d.version === version }).where(eq(DeploysTable.id, d.id)).run();
@@ -58,7 +63,7 @@ if (Astro.request.method === 'POST') {
   if (action === 'delete-deploy') {
     const deployId = Number(formData.get('deployId'));
     const deploy = await client.select().from(DeploysTable).where(eq(DeploysTable.id, deployId)).get();
-    if (deploy && !deploy.isLive) {
+    if (deploy && deploy.projectId === projectId && !deploy.isLive) {
       await client.delete(DeployPagesTable).where(eq(DeployPagesTable.deployId, deployId)).run();
       await client.delete(DeploysTable).where(eq(DeploysTable.id, deployId)).run();
     }
@@ -66,7 +71,8 @@ if (Astro.request.method === 'POST') {
   }
 
   if (action === 'delete-project') {
-    await client.delete(DeployPagesTable).where(eq(DeployPagesTable.deployId, projectId)).run();
+    const projectDeploys = await client.select({ id: DeploysTable.id }).from(DeploysTable).where(eq(DeploysTable.projectId, projectId)).all();
+    if (projectDeploys.length) await client.delete(DeployPagesTable).where(inArray(DeployPagesTable.deployId, projectDeploys.map(d => d.id))).run();
     await client.delete(DeploysTable).where(eq(DeploysTable.projectId, projectId)).run();
     await client.delete(ProjectsTable).where(eq(ProjectsTable.id, projectId)).run();
     return Astro.redirect('/dashboard');
@@ -83,7 +89,7 @@ const deploys = await client
 const deployIds = deploys.map(d => d.id);
 
 const allPages = deployIds.length > 0
-  ? await client.select().from(DeployPagesTable).orderBy(asc(DeployPagesTable.route)).all()
+  ? await client.select().from(DeployPagesTable).where(inArray(DeployPagesTable.deployId, deployIds)).orderBy(asc(DeployPagesTable.route)).all()
   : [];
 
 const pagesByDeploy = new Map<number, typeof allPages>();
@@ -95,221 +101,61 @@ for (const p of allPages) {
 
 const liveDeploy = deploys.find(d => d.isLive);
 const liveUrl = `/u/${dbUser.username}/${project.slug}`;
+const formatDate = (value: string) => {
+  const date = new Date(value.includes('T') ? value : value.replace(' ', 'T') + 'Z');
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('es-UY', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Montevideo' }).format(date);
+};
+const fileSize = (content: string) => {
+  if (content.startsWith('labs:asset:v1:')) {
+    const { data } = JSON.parse(content.slice('labs:asset:v1:'.length));
+    return Buffer.byteLength(data, 'base64');
+  }
+  return Buffer.byteLength(content, 'utf8');
+};
+const sizeLabel = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
 ---
-
-<AdminLayout title={project.name}>
-  <div class="mx-auto max-w-4xl">
-    <div class="mb-8">
-      <a href="/dashboard" class="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted no-underline transition-colors hover:text-text-secondary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="m15 18-6-6 6-6"/>
-        </svg>
-        Volver al dashboard
-      </a>
-
-      <div class="mt-2 flex items-start justify-between gap-4">
-        <div>
-          <h1 class="font-display text-3xl font-bold tracking-tight">{project.name}</h1>
-          <p class="mt-1 text-text-muted">
-            {liveDeploy ? (
-              <a href={liveUrl} target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-text-secondary no-underline transition-colors hover:text-accent">
-                {liveUrl}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>
-                </svg>
-              </a>
-            ) : (
-              <span>/u/{dbUser.username}/{project.slug}</span>
-            )}
-            {liveDeploy && (
-              <span class="ml-2 inline-flex items-center gap-1 text-success">
-                <span class="h-1.5 w-1.5 rounded-full bg-success"></span>
-                Live (v{liveDeploy.version})
-              </span>
-            )}
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          {liveDeploy && (
-            <>
-              <form method="POST" action={`/dashboard/projects/${projectId}?action=unpublish`} class="shrink-0">
-                <button
-                  type="submit"
-                  class="inline-flex items-center gap-2 rounded-[14px] border border-warning/30 bg-warning/5 px-4 py-2.5 text-sm font-medium text-warning no-underline transition-all hover:bg-warning/10 cursor-pointer"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
-                    <line x1="2" x2="22" y1="2" y2="22"/>
-                  </svg>
-                  Quitar live
-                </button>
-              </form>
-              <a
-                href={liveUrl}
-                target="_blank"
-                rel="noopener"
-                class="shrink-0 inline-flex items-center gap-2 rounded-[14px] border border-border-default bg-transparent px-4 py-2.5 text-sm font-medium text-text-secondary no-underline transition-all hover:bg-surface-card-hover hover:text-text-primary"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-                </svg>
-                Ver live
-              </a>
-            </>
-          )}
-          <a
-            href={`/dashboard/projects/${projectId}/deploy`}
-            class="shrink-0 inline-flex items-center gap-2 rounded-[14px] bg-accent px-5 py-2.5 text-sm font-semibold text-white no-underline transition-all hover:bg-accent-hover hover:shadow-[0_8px_30px_rgba(99,102,241,0.3)]"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-            </svg>
-            Nuevo Deploy
-          </a>
-        </div>
-      </div>
-    </div>
-
-    {project.description && (
-      <p class="mb-6 text-text-secondary">{project.description}</p>
-    )}
-
-    {deploys.length === 0 ? (
-      <div class="flex flex-col items-center justify-center rounded-[20px] border border-dashed border-border-default py-16">
-        <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-[14px] bg-surface-card">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-text-muted">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-          </svg>
-        </div>
-        <h3 class="mb-1 font-display text-lg font-semibold text-text-primary">Sin deploys</h3>
-        <p class="mb-5 text-sm text-text-muted">Subi tu primer deploy para publicar tu proyecto.</p>
-        <a
-          href={`/dashboard/projects/${projectId}/deploy`}
-          class="inline-flex items-center gap-2 rounded-[12px] bg-accent px-4 py-2 text-sm font-medium text-white no-underline transition-colors hover:bg-accent-hover"
-        >
-          Subir deploy
-        </a>
-      </div>
-    ) : (
-      <div class="flex flex-col gap-4">
-        {deploys.map((deploy) => {
-          const pages = pagesByDeploy.get(deploy.id) || [];
-          return (
-            <div class="rounded-[16px] border border-border-subtle bg-surface-card overflow-hidden">
-              <div class="flex items-center gap-3 p-4">
-                <div class:list={[
-                  "flex h-10 w-10 items-center justify-center rounded-[10px] text-sm font-bold shrink-0",
-                  deploy.isLive ? "bg-success/10 text-success" : "bg-surface-elevated text-text-secondary"
-                ]}>
-                  v{deploy.version}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium text-text-primary">Version {deploy.version}</span>
-                    {deploy.isLive && (
-                      <span class="rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">Live</span>
-                    )}
-                  </div>
-                  <p class="text-xs text-text-muted">{pages.length} pagina{pages.length !== 1 ? 's' : ''}</p>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  {!deploy.isLive && (
-                    <form method="POST" action={`/dashboard/projects/${projectId}?action=set-live`}>
-                      <input type="hidden" name="version" value={deploy.version} />
-                      <button
-                        type="submit"
-                        class="rounded-[10px] border border-border-default bg-transparent px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-card-hover hover:text-text-primary cursor-pointer"
-                      >
-                        Set Live
-                      </button>
-                    </form>
-                  )}
-                  {!deploy.isLive && (
-                    <form method="POST" action={`/dashboard/projects/${projectId}?action=delete-deploy`}>
-                      <input type="hidden" name="deployId" value={deploy.id} />
-                      <button
-                        type="submit"
-                        class="flex h-8 w-8 items-center justify-center rounded-[8px] border border-border-subtle bg-transparent text-text-muted transition-colors hover:border-danger/30 hover:bg-danger/5 hover:text-danger cursor-pointer"
-                        title="Eliminar deploy"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                      </button>
-                    </form>
-                  )}
-                </div>
-              </div>
-
-              {pages.length > 0 && (
-                <div class="border-t border-border-subtle">
-                  <div class="px-4 py-2">
-                    <p class="text-[11px] font-medium uppercase tracking-wider text-text-faint">Archivos</p>
-                  </div>
-                  <div class="divide-y divide-border-subtle">
-                    {pages.map((page) => (
-                      <div class="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-surface-card-hover">
-                        <div class="flex h-6 w-6 items-center justify-center rounded-[6px] bg-accent/8 text-accent">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
-                          </svg>
-                        </div>
-                        <span class="flex-1 text-sm text-text-primary font-mono">{page.route}</span>
-                        <span class="text-xs text-text-faint">{(page.content.length / 1024).toFixed(1)} KB</span>
-                        {deploy.isLive && (
-                          <a
-                            href={page.route === '/' ? liveUrl : `${liveUrl}${page.route}`}
-                            target="_blank"
-                            rel="noopener"
-                            class="flex h-6 w-6 items-center justify-center rounded-[6px] text-text-faint transition-colors hover:bg-accent/10 hover:text-accent"
-                            title="Abrir en nueva pestana"
-                          >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>
-                            </svg>
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    )}
-
-    {deploys.length > 0 && (
-      <div class="mt-12 border-t border-border-subtle pt-8">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="font-display text-lg font-semibold text-text-primary">Zona de peligro</h3>
-            <p class="text-sm text-text-muted">Eliminar este proyecto es permanente.</p>
-          </div>
-          <form method="POST" action={`/dashboard/projects/${projectId}?action=delete-project`} id="deleteProjectForm">
-            <button
-              type="button"
-              id="deleteProjectBtn"
-              class="inline-flex items-center gap-2 rounded-[14px] border border-danger/30 bg-danger/5 px-5 py-2.5 text-sm font-medium text-danger transition-all hover:bg-danger/10 cursor-pointer"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-              Eliminar proyecto
-            </button>
-          </form>
-        </div>
-      </div>
-    )}
+<AdminLayout title={`${project.name} · Deploys`}>
+  <div class="deploy-manager">
+    <nav class="deploy-breadcrumb" aria-label="Ruta del proyecto"><a href="/dashboard">Proyectos</a><span>/</span><span>{project.name}</span></nav>
+    <div class="page-heading deploy-heading"><div><span class="eyebrow">DEL EXPERIMENTO A PRODUCCIÓN</span><h1>{project.name}<span class="brand-dot">.</span></h1><p>{project.description || 'Cada versión, un paso más cerca de tu próxima gran idea.'}</p></div><a class="button" href={`/dashboard/projects/${projectId}/deploy`}><Icon name="upload" size={17} /> Nuevo deploy</a></div>
+    <div class="deploy-section-nav"><span class="selected"><Icon name="layers" size={16} /> Deploys <b>{deploys.length}</b></span><span>Historial de versiones</span></div>
+    <section class:list={['production-panel', { 'is-live': !!liveDeploy }]} aria-labelledby="production-heading">
+      <div class="production-overview"><div class="production-globe"><Icon name="globe" size={26} /></div><div><span class="eyebrow">PRODUCCIÓN</span><h2 id="production-heading">{liveDeploy ? 'Tu proyecto está en línea.' : 'Listo para tu próximo lanzamiento.'}</h2><p>{liveDeploy ? 'Esta es la versión que ve quien visita tu web.' : 'Elegí una versión del historial para publicar tu web.'}</p></div><span class:list={['status-badge', { published: !!liveDeploy }]}><i></i>{liveDeploy ? 'Publicado' : 'Sin publicar'}</span></div>
+      <div class="production-meta"><div><span>Dirección del proyecto</span>{liveDeploy ? <a class="production-address" href={liveUrl + '/'} target="_blank" rel="noopener">{liveUrl}/ <Icon name="arrow" size={14} /></a> : <p class="production-address">{liveUrl}/</p>}</div><div><span>Versión activa</span><p>{liveDeploy ? `v${liveDeploy.version}` : '—'}</p></div><div><span>Creada</span><p>{liveDeploy ? formatDate(liveDeploy.createdAt) : 'Esperando publicación'}</p></div></div>
+      {liveDeploy && <div class="production-actions"><a href={liveUrl + '/'} target="_blank" rel="noopener" class="button button-secondary button-small">Visitar web <Icon name="arrow" size={14} /></a><form method="POST" action={`?action=unpublish`} data-confirm="¿Quitar la web de producción? Tus versiones se conservarán."><button type="submit" class="quiet-button">Quitar de producción</button></form><span><span class="tiny-dot"></span> v{liveDeploy.version} en producción</span></div>}
+    </section>
+    <section aria-labelledby="history-heading" class="deploy-history">
+      <div class="projects-heading"><h2 id="history-heading">Historial de deploys <span>{deploys.length}</span></h2><span class="muted-caption">La última versión aparece primero.</span></div>
+      {deploys.length > 0 && <div class="project-toolbar"><label class="search-field"><Icon name="search" size={17} /><span class="sr-only">Buscar versión</span><input id="deploy-search" type="search" placeholder="Buscar versión, archivo o fecha…" /></label><div class="filter-buttons" role="group" aria-label="Filtrar versiones"><button data-deploy-filter="all" aria-pressed="true">Todas</button><button data-deploy-filter="live" aria-pressed="false">En producción</button><button data-deploy-filter="saved" aria-pressed="false">Guardadas</button></div></div>}
+      {deploys.length === 0 ? <div class="empty-projects"><span class="empty-icon"><Icon name="upload" size={32} /></span><span class="eyebrow">TU HISTORIAL EMPIEZA ACÁ</span><h2>Primero un deploy. Después, el mundo.</h2><p>Subí un ZIP con tu web o tus archivos HTML.<br />La versión se guardará hasta que decidas publicarla.</p><a href={`/dashboard/projects/${projectId}/deploy`} class="button"><Icon name="plus" size={16} /> Subir mi primer deploy</a></div> : <div class="deployment-list">{deploys.map((deploy, index) => {
+        const pages = pagesByDeploy.get(deploy.id) || [];
+        const total = pages.reduce((sum, page) => sum + fileSize(page.content), 0);
+        return <article class:list={['deployment-card', { 'deployment-live': deploy.isLive }]} data-deployment data-state={deploy.isLive ? 'live' : 'saved'} data-search={`v${deploy.version} versión ${deploy.version} ${formatDate(deploy.createdAt)} ${pages.map(p => p.route).join(' ')}`.toLocaleLowerCase()}>
+          <div class="deployment-row"><div class="deployment-version"><Icon name="layers" size={19} /><strong>v{deploy.version}</strong></div><div class="deployment-description"><div><h3>Versión {deploy.version}</h3><span class:list={['status-badge', { published: deploy.isLive }]}><i></i>{deploy.isLive ? 'En producción' : 'Guardada'}</span>{index === 0 && <span class="latest-label">Más reciente</span>}</div><p><time datetime={deploy.createdAt}>{formatDate(deploy.createdAt)}</time><span>·</span>{pages.length} {pages.length === 1 ? 'archivo' : 'archivos'}<span>·</span>{sizeLabel(total)}</p></div><div class="deployment-actions">{deploy.isLive ? <a class="button button-secondary button-small" href={liveUrl + '/'} target="_blank" rel="noopener">Visitar <Icon name="arrow" size={14} /></a> : <><form method="POST" action="?action=set-live"><input type="hidden" name="version" value={deploy.version} /><button class="button button-secondary button-small" type="submit"><Icon name="globe" size={14} /> {liveDeploy && deploy.version < liveDeploy.version ? 'Restaurar versión' : 'Publicar versión'}</button></form><form method="POST" action="?action=delete-deploy" data-confirm={`¿Eliminar la versión ${deploy.version} y sus archivos? Esta acción no se puede deshacer.`}><input type="hidden" name="deployId" value={deploy.id} /><button class="deploy-delete" type="submit" aria-label={`Eliminar versión ${deploy.version}`} title="Eliminar versión"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg></button></form></>}</div></div>
+          <details class="deployment-files"><summary><Icon name="code" size={14} /><span>Explorar archivos</span><span class="file-count">{pages.length}</span><span class="details-chevron">⌄</span></summary><div class="deployment-file-list">{pages.map(page => <div class="deployment-file"><Icon name="code" size={14} /><code>{page.route}</code><span>{sizeLabel(fileSize(page.content))}</span>{deploy.isLive && <a href={page.route === '/' ? liveUrl + '/' : liveUrl + page.route.split('/').map(encodeURIComponent).join('/')} target="_blank" rel="noopener" aria-label={`Abrir ${page.route}`}><Icon name="arrow" size={14} /></a>}</div>)}</div></details>
+        </article>;
+      })}</div>}
+      <p id="deploy-no-results" class="no-results" role="status" hidden>No hay versiones que coincidan con tu búsqueda.</p><p class="sr-only" id="deploy-result-count" aria-live="polite"></p>
+    </section>
+    <aside class="help-strip"><span class="project-icon"><Icon name="layers" size={20} /></span><div><h3>Probá sin perder el camino.</h3><p>Cada deploy conserva sus archivos. Podés volver a publicar una versión anterior en cualquier momento.</p></div></aside>
+    <details class="project-settings"><summary>Administrar proyecto <span>⌄</span></summary><div class="project-danger"><div><h3>Eliminar proyecto</h3><p>Se eliminarán el proyecto y todas sus versiones de forma permanente.</p></div><form method="POST" action="?action=delete-project" data-confirm={`¿Eliminar ${project.name} y todos sus deploys? Esta acción no se puede deshacer.`}><button type="submit" class="deploy-danger-button">Eliminar proyecto</button></form></div></details>
   </div>
-
   <script>
-    document.getElementById("deleteProjectBtn")?.addEventListener("click", () => {
-      if (confirm("Eliminar este proyecto y todos sus deploys? Esta accion no se puede deshacer.")) {
-        document.getElementById("deleteProjectForm")?.requestSubmit();
-      }
-    });
+    const deployments = Array.from(document.querySelectorAll<HTMLElement>('[data-deployment]'));
+    const search = document.querySelector<HTMLInputElement>('#deploy-search');
+    const filters = document.querySelectorAll<HTMLButtonElement>('[data-deploy-filter]');
+    let state = 'all';
+    function update() {
+      const query = (search?.value || '').trim().toLocaleLowerCase();
+      let count = 0;
+      deployments.forEach(deploy => { const visible = (state === 'all' || deploy.dataset.state === state) && (deploy.dataset.search || '').includes(query); deploy.hidden = !visible; if (visible) count++; });
+      const empty = document.getElementById('deploy-no-results');
+      if (empty) empty.hidden = count > 0 || deployments.length === 0;
+      const status = document.getElementById('deploy-result-count');
+      if (status) status.textContent = `${count} versiones encontradas`;
+    }
+    search?.addEventListener('input', update);
+    filters.forEach(button => button.addEventListener('click', () => { state = button.dataset.deployFilter || 'all'; filters.forEach(filter => filter.setAttribute('aria-pressed', String(filter === button))); update(); }));
+    document.querySelectorAll<HTMLFormElement>('form[data-confirm]').forEach(form => form.addEventListener('submit', event => { if (!confirm(form.dataset.confirm || '¿Continuar con esta acción?')) event.preventDefault(); }));
   </script>
 </AdminLayout>
